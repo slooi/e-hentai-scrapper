@@ -5,14 +5,16 @@ import re
 import os
 import time
 import sys
-import random
 
 user_agent = {
 	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:70.0) Gecko/20100101 Firefox/70.0"
 }
 
+unable_to_download = []
 
 def download_chapter(chap_url):
+	global unable_to_download 
+	unable_to_download = []
 
 
 	# Incase there's a offensive warning
@@ -35,18 +37,54 @@ def download_chapter(chap_url):
 	try:
 		for i, page_url in enumerate(page_urls):
 			t = threading.Thread(target=h_download_imgs,args=(page_url,chp_name))
+			t.info = (page_url_to_name(page_url),page_url)
 			t.start()
 			print("Started download process for image {}".format(i))
 			t_list.append(t)
-			time.sleep(0.05)
+			# time.sleep(0.05)
 	except Exception as err:
 		print("Some thing went wrong while downloading and saving images!")
 		print("Error:")
 		print(err)
 		print("Manged to download {} images".format(sum(t.is_alive() for t in t_list)))
 
+	tm = thread_monitor(t_list)
+
 	[t.join() for t in t_list]
-	print("Everything downloaded from '{}'!".format(chp_name))
+
+	if len(unable_to_download) == 0:
+		print("Successful download of '{}'!".format(chp_name))
+	elif len(unable_to_download) < len(page_urls):
+		print("PARTAL Successful download of '{}'!".format(chp_name))
+		print("Missing pages: {}".format(unable_to_download))
+	else:
+		print("Failed download of '{}'!".format(chp_name))
+
+	# Second attempt at downloading images
+	for _, page_url in unable_to_download:
+		t = threading.Thread(target=h_download_imgs,args=(page_url,chp_name))
+		t.start()
+
+	tm.do_run = False
+
+
+def monitor(t_list):
+	# Monitors the thread
+	# Consoles progress occassionly
+	t = threading.current_thread()
+	while getattr(t,"do_run",True):
+		print("#"*30)
+		alive_threads =  [t.info[0] for t in t_list if t.is_alive()]
+		print("Progress: {} out of {} images remaining. {} ".format(len(t_list) - sum(t.is_alive() for t in t_list),len(t_list),"Images remaining: {}".format(alive_threads,end="") if len(alive_threads)<10 else ""))
+		time.sleep(10)
+
+
+def thread_monitor(t_list):
+	tm = threading.Thread(target=monitor,args=(t_list,))
+	tm.do_run = True
+	tm.start()
+	return tm
+
 
 def h_download_imgs(page_url,chp_name):
 	name = page_url_to_name(page_url)
@@ -90,11 +128,14 @@ def num_chap_pages_and_next_links(chap_url):
 	html = requests.get(chap_url,headers=user_agent).content
 	soup = BeautifulSoup(html,"html.parser")
 
-	# 
-	all_page_ele = soup.findAll("td",{"class":"ptdd"})[0].parent.findChildren("a")[0:-1]
+	a_tags = soup.findAll("td",{"class":"ptdd"})[0].parent.findChildren("a")
+	all_page_ele = a_tags
+	if not len(a_tags) == 1:
+		all_page_ele = a_tags[0:-1]
+		
 	all_page_href = [ele["href"] for ele in all_page_ele]
 
-	print(len(all_page_href),all_page_href)
+	print("Download from {} pages: {}".format(len(all_page_href),all_page_href))
 	return [len(all_page_href),all_page_href]
 
 
@@ -126,12 +167,35 @@ def get_img_ext(img_url):
 
 def download_img(img_url,chp_name,name,ext):
 	img_file = open("{}/{}.{}".format(chp_name,name,ext),"wb")
-	img_file.write(requests.get(img_url).content)
-	img_file.close()
-	print("{} saved".format(name))
 
+	potential_file_bin = get_img_bin(img_url,0,name)
+
+	if not potential_file_bin == 0:
+		img_file.write(potential_file_bin)
+		img_file.close()
+		print("{} saved".format(name))
+	else:
+		pass
+
+def get_img_bin(img_url,num_of_tries,name):
+	global unable_to_download
+
+	num_of_tries+=1
+	try:
+		return requests.get(img_url,headers=user_agent,timeout=30).content
+	except Exception as err:
+		print("ERROR:",err)
+		if num_of_tries > 3:
+			print("Aborting image download for image '{}'. A max of {} attempts was reached".format(name,num_of_tries))
+			unable_to_download.append((name,threading.current_thread().info[1]))
+			return 0
+			
+		print("Trying to download {} again. Total Download Attempts: {}".format(name,num_of_tries))
+		time.sleep(1)
+		return get_img_bin(img_url,num_of_tries+1,name)
 # num_chap_pages_and_next_links("https://e-hentai.org/g/1846633/c6d614fbbf/")
-download_img("https://pejbhim.hwxbgtmqrlbd.hath.network:6568/h/5182868199a47d35caee2c39026cf67755889bf8-109630-584-1262-jpg/keystamp=1613198100-3870178735;fileindex=81079955;xres=2400/76008129_p1.jpg",".","tester","jpg")
+# download_img("https://pejbhim.hwxbgtmqrlbd.hath.network:6568/h/5182868199a47d35caee2c39026cf67755889bf8-109630-584-1262-jpg/keystamp=1613198100-3870178735;fileindex=81079955;xres=2400/76008129_p1.jpg",".","tester","jpg")
+
 
 if __name__ == '__main__':
 	try:
@@ -146,3 +210,4 @@ if __name__ == '__main__':
 			print("{} is invalid".format(sys.argv))
 	else:
 		download_chapter(usr_input)
+
