@@ -6,6 +6,23 @@ import os
 import time
 import sys
 
+
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.poolmanager import PoolManager
+import ssl
+
+class MyAdapter(HTTPAdapter):
+    def init_poolmanager(self, connections, maxsize, block=False):
+        self.poolmanager = PoolManager(num_pools=connections,
+                                       maxsize=maxsize,
+                                       block=block,
+                                       ssl_version=ssl.PROTOCOL_TLSv1)
+
+import requests
+s = requests.Session()
+s.mount('https://', MyAdapter())
+
+
 user_agent = {
 	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:70.0) Gecko/20100101 Firefox/70.0"
 }
@@ -27,6 +44,7 @@ def download_chapter(chap_url):
 
 	# get all page urls
 	page_urls,chp_name = get_all_page_urls_and_chp_name(chap_url)
+	print("Beginning download of: {}".format(chp_name))
 	print("Images to download: {}".format(len(page_urls)))
 
 	# Create folder for images
@@ -46,25 +64,48 @@ def download_chapter(chap_url):
 		print("Some thing went wrong while downloading and saving images!")
 		print("Error:")
 		print(err)
-		print("Manged to download {} images".format(sum(t.is_alive() for t in t_list)))
+		print("Manged to download {} image(s)".format(sum(t.is_alive() for t in t_list)))
 
 	tm = thread_monitor(t_list)
 
 	[t.join() for t in t_list]
 
+	failed = True
+
 	if len(unable_to_download) == 0:
 		print("Successful download of '{}'!".format(chp_name))
+		failed = False
 	elif len(unable_to_download) < len(page_urls):
 		print("PARTAL Successful download of '{}'!".format(chp_name))
-		print("Missing pages: {}".format(unable_to_download))
+		print("Missing page(s): {}".format(unable_to_download))
 	else:
 		print("Failed download of '{}'!".format(chp_name))
 
-	# Second attempt at downloading images
-	for _, page_url in unable_to_download:
-		t = threading.Thread(target=h_download_imgs,args=(page_url,chp_name))
-		t.start()
+	if failed == True:
+		# Second attempt at downloading images
+		print("@"*30)
+		print("ATTEMPT TO DOWNLOAD FAILED IMAGES")
+		page_urls = unable_to_download
+		unable_to_download = []
+		for img_name, page_url in page_urls:
+			t = threading.Thread(target=h_download_imgs,args=(page_url,chp_name))
+			t.info = (page_url_to_name(page_url),page_url)
+			t.start()
+			print("Started download process for image {}".format(img_name))
+			t_list.append(t)
 
+		[t.join() for t in t_list]
+
+		if len(unable_to_download) == 0:
+			print("Successful download of '{}'!".format(chp_name))
+		elif len(unable_to_download) < len(page_urls):
+			print("PARTAL Successful download of '{}'!".format(chp_name))
+			print("Missing page(s): {}".format(unable_to_download))
+		else:
+			print("Failed re-download of '{}'!".format(chp_name))
+			print("Missing page(s): {}".format(unable_to_download))
+
+		
 	tm.do_run = False
 
 
@@ -75,7 +116,7 @@ def monitor(t_list):
 	while getattr(t,"do_run",True):
 		print("#"*30)
 		alive_threads =  [t.info[0] for t in t_list if t.is_alive()]
-		print("Progress: {} out of {} images remaining. {} ".format(len(t_list) - sum(t.is_alive() for t in t_list),len(t_list),"Images remaining: {}".format(alive_threads,end="") if len(alive_threads)<10 else ""))
+		print("Progress: {} out of {} images remaining. Number of skipped images: {}. {} ".format(len(t_list) - sum(t.is_alive() for t in t_list),len(t_list),len(unable_to_download),"Images remaining: {}".format(alive_threads,end="") if len(alive_threads)<10 else ""))
 		time.sleep(10)
 
 
@@ -132,12 +173,22 @@ def num_chap_pages_and_next_links(chap_url):
 	all_page_ele = a_tags
 	if not len(a_tags) == 1:
 		all_page_ele = a_tags[0:-1]
-		
-	all_page_href = [ele["href"] for ele in all_page_ele]
 
-	print("Download from {} pages: {}".format(len(all_page_href),all_page_href))
-	return [len(all_page_href),all_page_href]
+		first_half_url, last_pg_str = all_page_ele[-1]["href"].split("=")
+		first_half_url+="="
+		all_page_href = generate_chap_pages(first_half_url,last_pg_str)
 
+		print("Download from {} pages: {}".format(len(all_page_href),all_page_href))
+		return [len(all_page_href),all_page_href]
+	else:
+		all_page_href = [ele["href"] for ele in all_page_ele]
+
+		print("Download from {} pages: {}".format(len(all_page_href),all_page_href))
+		return [len(all_page_href),all_page_href]
+
+def generate_chap_pages(first_half_url,last_pg_str):
+	# RETURNS string[] - urls of all the chap_pages
+	return [first_half_url+str(i) for i in range(int(last_pg_str)+1)]
 
 def page_url_to_name(page_url):
 	return page_url.split("/")[-1]
@@ -166,11 +217,11 @@ def get_img_ext(img_url):
 
 
 def download_img(img_url,chp_name,name,ext):
-	img_file = open("{}/{}.{}".format(chp_name,name,ext),"wb")
 
 	potential_file_bin = get_img_bin(img_url,0,name)
 
 	if not potential_file_bin == 0:
+		img_file = open("{}/{}.{}".format(chp_name,name,ext),"wb")
 		img_file.write(potential_file_bin)
 		img_file.close()
 		print("{} saved".format(name))
@@ -191,11 +242,10 @@ def get_img_bin(img_url,num_of_tries,name):
 			return 0
 			
 		print("Trying to download {} again. Total Download Attempts: {}".format(name,num_of_tries))
-		time.sleep(1)
-		return get_img_bin(img_url,num_of_tries+1,name)
+		return get_img_bin(img_url,num_of_tries,name)
 # num_chap_pages_and_next_links("https://e-hentai.org/g/1846633/c6d614fbbf/")
 # download_img("https://pejbhim.hwxbgtmqrlbd.hath.network:6568/h/5182868199a47d35caee2c39026cf67755889bf8-109630-584-1262-jpg/keystamp=1613198100-3870178735;fileindex=81079955;xres=2400/76008129_p1.jpg",".","tester","jpg")
-
+# download_chapter("https://e-hentai.org/g/1847575/91557f3dde/")
 
 if __name__ == '__main__':
 	try:
