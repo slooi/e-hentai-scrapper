@@ -233,7 +233,16 @@ def get_img_bin(img_url,num_of_tries,name):
 
 	num_of_tries+=1
 	try:
-		return requests.get(img_url,headers=user_agent,timeout=30).content
+		if num_of_tries<=2: #!@#!@# change later
+			# get image url from loadfail
+			
+			html = requests.get(threading.current_thread().info[1])
+			soup = BeautifulSoup(html,"html.parser")
+			re = soup.findAll("a",{"id":"loadfail"})[0]
+
+			return requests.get(img_url,headers=user_agent,timeout=30).content
+		else:
+			return requests.get(img_url,headers=user_agent,timeout=30).content
 	except Exception as err:
 		print("ERROR:",err)
 		if num_of_tries > 3:
@@ -245,7 +254,7 @@ def get_img_bin(img_url,num_of_tries,name):
 		return get_img_bin(img_url,num_of_tries,name)
 # num_chap_pages_and_next_links("https://e-hentai.org/g/1846633/c6d614fbbf/")
 # download_img("https://pejbhim.hwxbgtmqrlbd.hath.network:6568/h/5182868199a47d35caee2c39026cf67755889bf8-109630-584-1262-jpg/keystamp=1613198100-3870178735;fileindex=81079955;xres=2400/76008129_p1.jpg",".","tester","jpg")
-# download_chapter("https://e-hentai.org/g/1847575/91557f3dde/")
+download_chapter("https://e-hentai.org/g/1842368/77ceb35c9c/")
 
 if __name__ == '__main__':
 	try:
