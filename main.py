@@ -7,24 +7,24 @@ import time
 import sys
 
 
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.poolmanager import PoolManager
-import ssl
+# from requests.adapters import HTTPAdapter
+# from requests.packages.urllib3.poolmanager import PoolManager
+# import ssl
 
-class MyAdapter(HTTPAdapter):
-    def init_poolmanager(self, connections, maxsize, block=False):
-        self.poolmanager = PoolManager(num_pools=connections,
-                                       maxsize=maxsize,
-                                       block=block,
-                                       ssl_version=ssl.PROTOCOL_TLSv1)
+# class MyAdapter(HTTPAdapter):
+#     def init_poolmanager(self, connections, maxsize, block=False):
+#         self.poolmanager = PoolManager(num_pools=connections,
+#                                        maxsize=maxsize,
+#                                        block=block,
+#                                        ssl_version=ssl.PROTOCOL_TLSv1)
 
-import requests
 s = requests.Session()
 s.mount('https://', MyAdapter())
 
 
 user_agent = {
-	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:70.0) Gecko/20100101 Firefox/70.0"
+	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:70.0) Gecko/20100101 Firefox/70.0",
+	# "Set-Cookie": "w:1"
 }
 
 unable_to_download = []
@@ -146,7 +146,7 @@ def get_all_page_urls_and_chp_name(chap_url):
 	page_urls = []
 	while not chap_pages_downloaded == num_to_download:
 		# get page content
-		html = requests.get(hrefs[chap_pages_downloaded],headers=user_agent).content
+		html = s.get(hrefs[chap_pages_downloaded],headers=user_agent).content
 		soup = BeautifulSoup(html,"html.parser")
 
 		# get link to img pages from images' parents
@@ -166,7 +166,7 @@ def num_chap_pages_and_next_links(chap_url):
 	# RETURNS: number of chapter pages AND next links
 
 	# get page content
-	html = requests.get(chap_url,headers=user_agent).content
+	html = s.get(chap_url,headers=user_agent).content
 	soup = BeautifulSoup(html,"html.parser")
 
 	# THE LINE BELOW THROWS AND ERROR WHEN YOU'VE BEEN BANNED
@@ -207,7 +207,7 @@ def download_img_from_page(page_url,chp_name,name):
 
 def img_url_from_page_url(page_url,get_loadfail = False):
 	# Get img url
-	html = requests.get(page_url,headers=user_agent).content
+	html = s.get(page_url,headers=user_agent).content
 	soup = BeautifulSoup(html,"html.parser")
 	ele_list = soup.findAll("img",{"id":"img"})
 	img_url = ele_list[0]["src"]
@@ -242,7 +242,7 @@ def get_img_bin(img_url,num_of_tries,name):
 
 	num_of_tries+=1
 	try:
-		return requests.get(img_url,headers=user_agent,timeout=30).content
+		return s.get(img_url,headers=user_agent,timeout=30).content
 	except Exception as err:
 		print("ERROR:",err)
 		if num_of_tries >= 3:
@@ -267,7 +267,7 @@ def get_img_bin_loadfail(img_url,num_of_tries,name):
 		num_of_tries+=1
 		
 		try:
-			return requests.get(img_url,headers=user_agent,timeout=30).content
+			return s.get(img_url,headers=user_agent,timeout=30).content
 		except Exception as err:
 			print("ERROR:",err)
 			print("Aborting image download for image '{}'. A max of {} attempts was reached".format(name,num_of_tries))
@@ -278,7 +278,7 @@ def get_img_bin_loadfail(img_url,num_of_tries,name):
 
 # num_chap_pages_and_next_links("https://e-hentai.org/g/1846633/c6d614fbbf/")
 # download_img("https://pejbhim.hwxbgtmqrlbd.hath.network:6568/h/5182868199a47d35caee2c39026cf67755889bf8-109630-584-1262-jpg/keystamp=1613198100-3870178735;fileindex=81079955;xres=2400/76008129_p1.jpg",".","tester","jpg")
-download_chapter("https://e-hentai.org/g/1809737/2db6b8f48e/")
+# download_chapter("https://e-hentai.org/g/1809737/2db6b8f48e/")
 
 if __name__ == '__main__':
 	try:
