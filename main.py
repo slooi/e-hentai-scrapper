@@ -169,7 +169,8 @@ def num_chap_pages_and_next_links(chap_url):
 	html = requests.get(chap_url,headers=user_agent).content
 	soup = BeautifulSoup(html,"html.parser")
 
-	a_tags = soup.findAll("td",{"class":"ptdd"})[0].parent.findChildren("a")
+	# THE LINE BELOW THROWS AND ERROR WHEN YOU'VE BEEN BANNED
+	a_tags = soup.findAll("td",{"class":"ptdd"})[0].parent.findChildren("a") 
 	all_page_ele = a_tags
 	if not len(a_tags) == 1:
 		all_page_ele = a_tags[0:-1]
@@ -197,18 +198,27 @@ def download_img_from_page(page_url,chp_name,name):
 	# downloads one image from a page
 
 	# Get info to download image
-	img_url = img_url_from_page_url(page_url)
+	img_url = img_url_from_page_url(page_url,True)
 	ext = get_img_ext(img_url)
 
 	# Download image
 	download_img(img_url,chp_name,name,ext)
 
 
-def img_url_from_page_url(page_url):
+def img_url_from_page_url(page_url,get_loadfail = False):
+	# Get img url
 	html = requests.get(page_url,headers=user_agent).content
 	soup = BeautifulSoup(html,"html.parser")
 	ele_list = soup.findAll("img",{"id":"img"})
-	return ele_list[0]["src"]
+	img_url = ele_list[0]["src"]
+
+	if get_loadfail:
+		# set loadfail url
+		loadfail_url_section = soup.findAll("a",{"id":"loadfail"})[0]["onclick"]
+		loadfail_url = loadfail_url_section.split("'")[1]
+		threading.current_thread().loadfail = page_url+"?nl="+loadfail_url #!@#!@#!@#
+	
+	return img_url
 
 
 def get_img_ext(img_url):
@@ -229,32 +239,46 @@ def download_img(img_url,chp_name,name,ext):
 		pass
 
 def get_img_bin(img_url,num_of_tries,name):
-	global unable_to_download
 
 	num_of_tries+=1
 	try:
-		if num_of_tries<=2: #!@#!@# change later
-			# get image url from loadfail
-			
-			html = requests.get(threading.current_thread().info[1])
-			soup = BeautifulSoup(html,"html.parser")
-			re = soup.findAll("a",{"id":"loadfail"})[0]
-
-			return requests.get(img_url,headers=user_agent,timeout=30).content
-		else:
-			return requests.get(img_url,headers=user_agent,timeout=30).content
+		return requests.get(img_url,headers=user_agent,timeout=30).content
 	except Exception as err:
 		print("ERROR:",err)
-		if num_of_tries > 3:
-			print("Aborting image download for image '{}'. A max of {} attempts was reached".format(name,num_of_tries))
-			unable_to_download.append((name,threading.current_thread().info[1]))
-			return 0
+		if num_of_tries >= 3:
+			return get_img_bin_loadfail(img_url,num_of_tries,name)
 			
 		print("Trying to download {} again. Total Download Attempts: {}".format(name,num_of_tries))
 		return get_img_bin(img_url,num_of_tries,name)
+
+def get_img_bin_loadfail(img_url,num_of_tries,name):
+	print("### Attempting to use loadfail for image {} link after {} attempts".format(name,num_of_tries))
+	global unable_to_download
+
+
+	# get loadfail page image src 
+	try:
+		img_url = img_url_from_page_url(threading.current_thread().loadfail)
+	except:
+		return 0
+
+	# try to get loadfail page IMAGE data
+	while num_of_tries < 5:
+		num_of_tries+=1
+		
+		try:
+			return requests.get(img_url,headers=user_agent,timeout=30).content
+		except Exception as err:
+			print("ERROR:",err)
+			print("Aborting image download for image '{}'. A max of {} attempts was reached".format(name,num_of_tries))
+	
+	unable_to_download.append((name,threading.current_thread().info[1]))
+	return 0
+
+
 # num_chap_pages_and_next_links("https://e-hentai.org/g/1846633/c6d614fbbf/")
 # download_img("https://pejbhim.hwxbgtmqrlbd.hath.network:6568/h/5182868199a47d35caee2c39026cf67755889bf8-109630-584-1262-jpg/keystamp=1613198100-3870178735;fileindex=81079955;xres=2400/76008129_p1.jpg",".","tester","jpg")
-download_chapter("https://e-hentai.org/g/1842368/77ceb35c9c/")
+download_chapter("https://e-hentai.org/g/1809737/2db6b8f48e/")
 
 if __name__ == '__main__':
 	try:
