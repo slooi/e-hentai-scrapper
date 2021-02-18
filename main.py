@@ -19,7 +19,7 @@ import sys
 #                                        ssl_version=ssl.PROTOCOL_TLSv1)
 
 s = requests.Session()
-s.mount('https://', MyAdapter())
+# s.mount('https://', MyAdapter())
 
 
 user_agent = {
